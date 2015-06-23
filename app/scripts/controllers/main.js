@@ -1,82 +1,90 @@
 'use strict';
 
-SwaggerEditor.controller('MainCtrl', function MainCtrl(
-  $scope, $rootScope, $stateParams, $location,
-  Editor, Storage, FileLoader, BackendHealthCheck, Analytics, defaults) {
+SwaggerEditor.controller('MainCtrl',
+  function MainCtrl($scope, $rootScope, $stateParams, $location,
+                    Editor, Storage, FileLoader, GitHubFileLoader,
+                    BackendHealthCheck, Analytics, defaults) {
 
-  Analytics.initialize();
+    Analytics.initialize();
 
-  $rootScope.$on('$stateChangeStart', Editor.initializeEditor);
+    $rootScope.$on('$stateChangeStart', Editor.initializeEditor);
 
-  // if backendHealthCheckTimeout is less than zero, it means it is disabled.
-  if (defaults.backendHealthCheckTimeout > 0) {
-    BackendHealthCheck.startChecking();
-  }
+    // if backendHealthCheckTimeout is less than zero, it means it is disabled.
+    if (defaults.backendHealthCheckTimeout > 0) {
+      BackendHealthCheck.startChecking();
+    }
 
-  $rootScope.$on('$stateChangeStart', loadYaml);
+    $rootScope.$on('$stateChangeStart', loadYaml);
 
-  // TODO: find a better way to add the branding class (grunt html template)
-  $('body').addClass(defaults.brandingCssClass);
+    // TODO: find a better way to add the branding class (grunt html template)
+    $('body').addClass(defaults.brandingCssClass);
 
-  loadYaml();
+    loadYaml();
 
-  /*
-  * Load Default or URL YAML
-  */
-  function loadYaml() {
+    /*
+     * Load Default or URL YAML
+     */
+    function loadYaml() {
 
-    Storage.load('yaml').then(function (yaml) {
-      var url;
-      var disableProxy = false;
+      Storage.load('yaml').then(function (yaml) {
+        var url;
+        var disableProxy = false;
 
-      // If there is a url provided, override the storage with that URL
-      if ($stateParams.import) {
-        url = $stateParams.import;
-        disableProxy = Boolean($stateParams['no-proxy']);
-        $location.search('import', null);
-        $location.search('no-proxy', null);
+        if ($stateParams.github) {
+          var path = $stateParams.github;
+          var branch = $stateParams.branch;
+          GitHubFileLoader.loadFromGitHub(path, branch).then(assign);
+        } else {
+          // If there is a url provided, override the storage with that URL
+          if ($stateParams.import) {
+            url = $stateParams.import;
+            disableProxy = Boolean($stateParams['no-proxy']);
+            $location.search('import', null);
+            $location.search('no-proxy', null);
 
-      // If there is no saved YAML either, load the default example
-      } else if (!yaml) {
-        url = defaults.examplesFolder + defaults.exampleFiles[0];
+            // If there is no saved YAML either, load the default example
+          } else if (!yaml) {
+            url = defaults.examplesFolder + defaults.exampleFiles[0];
+          }
+
+          if (url) {
+            FileLoader.loadFromUrl(url, disableProxy).then(assign);
+          }
+        }
+
+      });
+    }
+
+    /*
+     * Assigns the YAML string to editor
+     *
+     * @param {string} yaml - the Swagger document YAML or JSON
+     */
+    function assign(yaml) {
+      if (yaml) {
+        Storage.save('yaml', yaml);
+        $rootScope.editorValue = yaml;
       }
+    }
 
-      if (url) {
-        FileLoader.loadFromUrl(url, disableProxy).then(assign);
+    // ----------------------- File drag and drop -------------------------
+
+    var fileReader = new FileReader();
+    $scope.draggedFiles = [];
+
+    // Watch for dropped files and trigger file reader
+    $scope.$watch('draggedFiles', function () {
+      var file = $scope.draggedFiles[0];
+
+      if (file) {
+        fileReader.readAsText(file, 'utf-8');
       }
     });
-  }
 
-  /*
-   * Assigns the YAML string to editor
-   *
-   * @param {string} yaml - the Swagger document YAML or JSON
-  */
-  function assign(yaml) {
-    if (yaml) {
-      Storage.save('yaml', yaml);
-      $rootScope.editorValue = yaml;
-    }
-  }
-
-  // ----------------------- File drag and drop --------------------------------
-
-  var fileReader = new FileReader();
-  $scope.draggedFiles = [];
-
-  // Watch for dropped files and trigger file reader
-  $scope.$watch('draggedFiles', function () {
-    var file = $scope.draggedFiles[0];
-
-    if (file) {
-      fileReader.readAsText(file, 'utf-8');
-    }
+    // on reader success load the string
+    fileReader.onloadend = function () {
+      if (fileReader.result) {
+        assign(FileLoader.load(fileReader.result));
+      }
+    };
   });
-
-  // on reader success load the string
-  fileReader.onloadend = function () {
-    if (fileReader.result) {
-      assign(FileLoader.load(fileReader.result));
-    }
-  };
-});

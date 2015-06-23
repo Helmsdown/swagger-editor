@@ -6,7 +6,7 @@ SwaggerEditor.config(function Router($compileProvider, $stateProvider,
 
   $stateProvider
   .state('home', {
-    url: '/?import&tags&no-proxy',
+    url: '/?import&tags&no-proxy&github&branch',
     views: {
       '': {
         templateUrl: 'views/main.html',
